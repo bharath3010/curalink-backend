@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model users {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  auth_uid   String?
+  name       String
+  email      String   @unique
+  phone      String?
+  role       String   @default("patient")
+  avatar_url String?
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+}
+
+model doctors {
+  id                  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id             String?  @db.Uuid
+  specialties         String[]
+  experience_years    Int      @default(0)
+  fee                 Int
+  rating              Float?   // simplified (from Numeric)
+  reviews_count       Int      @default(0)
+  languages           String[]
+  gender              String?
+  bio                 String?
+  location            Json?
+  verified            Boolean  @default(false)
+  verification_status String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+
+  @@index([fee])
+}
+
+model doctor_work_hours {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  doctor_id  String?  @db.Uuid
+  weekday    Int
+  start_time String
+  end_time   String
+}
+
+model verification_docs {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  doctor_id      String?  @db.Uuid
+  file_url       String?
+  file_type      String?
+  filename       String?
+  uploaded_at    DateTime @default(now())
+  status         String?
+  admin_comments String?
+}
+
+model patients {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String?  @db.Uuid
+  age             Int?
+  blood_group     String?
+  allergies       String[]
+  medical_records Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now())
+}
+
+model appointments {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  booking_id        String?  @unique
+  doctor_id         String?  @db.Uuid
+  patient_id        String?  @db.Uuid
+  appointment_start DateTime
+  duration_minutes  Int      @default(30)
+  status            String
+  reason            String?
+  notes             String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @default(now())
+  payment_id        String?  @db.Uuid
+
+  @@unique([doctor_id, appointment_start], name: "appointment_unique_doctor_slot")
+}
+
+model payments {
+  id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  appointment_id     String?  @db.Uuid
+  amount             Int
+  platform_fee       Int?
+  discount           Int?
+  coupon_code        String?
+  provider           String?
+  provider_payment_id String?
+  status             String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @default(now())
+}
+
+model reviews {
+  id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  appointment_id     String?  @db.Uuid
+  doctor_id          String?  @db.Uuid
+  patient_id         String?  @db.Uuid
+  overall_rating     Int?
+  bedside            Int?
+  wait_time          Int?
+  staff_friendliness Int?
+  comment            String?
+  anonymous          Boolean? @default(false)
+  created_at         DateTime @default(now())
+}
+
+model coupons {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code        String   @unique
+  coupon_type String
+  value       Float     // simplified
+  min_amount  Int?
+  valid_from  DateTime?
+  valid_until DateTime?
+  usage_limit Int?
+  used_count  Int?
+  created_at  DateTime @default(now())
+}
+// Credentials table for password storage
+model credentials {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id       String   @unique @db.Uuid
+  password_hash String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+}
+
+// Notifications table
+model notifications {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  type       String   // 'email', 'push', 'sms'
+  title      String
+  message    String
+  data       Json?
+  read       Boolean  @default(false)
+  sent       Boolean  @default(false)
+  created_at DateTime @default(now())
+  
+  @@index([user_id, read])
+}
+
+// Push notification tokens
+model push_tokens {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  token      String   @unique
+  device     String?  // 'web', 'android', 'ios'
+  created_at DateTime @default(now())
+  
+  @@index([user_id])
+}
+
+// Cancellation records
+model cancellations {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  appointment_id String   @unique @db.Uuid
+  cancelled_by   String   @db.Uuid  // user_id
+  reason         String?
+  penalty_amount Int      @default(0)
+  refund_amount  Int      @default(0)
+  cancelled_at   DateTime @default(now())
+}
+// Credentials table for password storage
+model credentials {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id       String   @unique @db.Uuid
+  password_hash String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+}
+
+// Notifications table
+model notifications {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  type       String   // 'email', 'push', 'sms'
+  title      String
+  message    String
+  data       Json?
+  read       Boolean  @default(false)
+  sent       Boolean  @default(false)
+  created_at DateTime @default(now())
+  
+  @@index([user_id, read])
+}
+
+// Push notification tokens
+model push_tokens {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  token      String   @unique
+  device     String?  // 'web', 'android', 'ios'
+  created_at DateTime @default(now())
+  
+  @@index([user_id])
+}
+
+// Cancellation records
+model cancellations {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  appointment_id String   @unique @db.Uuid
+  cancelled_by   String   @db.Uuid  // user_id
+  reason         String?
+  penalty_amount Int      @default(0)
+  refund_amount  Int      @default(0)
+  cancelled_at   DateTime @default(now())
+}
+// Credentials table for password storage
+model credentials {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id       String   @unique @db.Uuid
+  password_hash String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+}
+
+// Notifications table
+model notifications {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  type       String   // 'email', 'push', 'sms'
+  title      String
+  message    String
+  data       Json?
+  read       Boolean  @default(false)
+  sent       Boolean  @default(false)
+  created_at DateTime @default(now())
+  
+  @@index([user_id, read])
+}
+
+// Push notification tokens
+model push_tokens {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  token      String   @unique
+  device     String?  // 'web', 'android', 'ios'
+  created_at DateTime @default(now())
+  
+  @@index([user_id])
+}
+
+// Cancellation records
+model cancellations {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  appointment_id String   @unique @db.Uuid
+  cancelled_by   String   @db.Uuid  // user_id
+  reason         String?
+  penalty_amount Int      @default(0)
+  refund_amount  Int      @default(0)
+  cancelled_at   DateTime @default(now())
+}

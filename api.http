@@ -1,0 +1,40 @@
+### Register
+POST https://curly-trout-4j7r69qx759q3q9pg-8001.app.github.dev/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Bharath",
+  "email": "bharath@test.com",
+  "password": "123456"
+}
+
+### Login
+POST https://curly-trout-4j7r69qx759q3q9pg-8001.app.github.dev/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "bharath@test.com",
+  "password": "123456"
+}
+
+### HEALTH CHECK
+GET https://curly-trout-4j7r69qx759q3q9pg-8001.app.github.dev/_health/
+
+### REGISTER USER
+POST https://curly-trout-4j7r69qx759q3q9pg-8001.app.github.dev/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Bharath",
+  "email": "bharath@test.com",
+  "password": "123456"
+}
+
+### LOGIN USER
+POST https://curly-trout-4j7r69qx759q3q9pg-8001.app.github.dev/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "bharath@test.com",
+  "password": "123456"
+}
