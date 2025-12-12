@@ -77,15 +77,19 @@ router.post('/login', authLimiter, validateBody(schemas.login), async (req, res,
     const user = await prisma.users.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const rows = await prisma.$queryRaw`
-      SELECT password_hash FROM credentials WHERE user_id = ${user.id} LIMIT 1
-    `;
-    const hashed = rows?.[0]?.password_hash;
+    // Use Prisma ORM instead of raw SQL
+    const cred = await prisma.credentials.findUnique({
+      where: { user_id: user.id }
+    });
 
-    if (!hashed) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!cred?.password_hash) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-    const ok = await bcrypt.compare(password, hashed);
-    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+    const ok = await bcrypt.compare(password, cred.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const access = signAccess({ userId: user.id, role: user.role });
     const refresh = signRefresh({ userId: user.id, role: user.role });
@@ -97,6 +101,7 @@ router.post('/login', authLimiter, validateBody(schemas.login), async (req, res,
     next(err);
   }
 });
+
 
 // GOOGLE LOGIN
 router.post('/google', async (req, res, next) => {
