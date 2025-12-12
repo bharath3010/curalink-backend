@@ -14,13 +14,13 @@ const COOKIE_OPTIONS = {
   maxAge: 30 * 24 * 60 * 60 * 1000
 };
 
-// Helper: Create or find user
+// Helper
 async function findOrCreateUser({ name, email, phone, role = 'patient', auth_uid = null }) {
   let user = await prisma.users.findUnique({ where: { email } });
 
   if (!user) {
     user = await prisma.users.create({
-      data: { name: name || email.split('@')[0], email, phone: phone || null, role, auth_uid }
+      data: { name, email, phone: phone || null, role, auth_uid }
     });
 
     if (role === 'patient') {
@@ -47,10 +47,13 @@ router.post('/register', authLimiter, validateBody(schemas.register), async (req
 
     const hash = await bcrypt.hash(password, 12);
 
-    await prisma.$executeRaw`
-      INSERT INTO credentials (user_id, password_hash)
-      VALUES (${user.id}::uuid, ${hash})
-    `;
+    // INSERT INTO credentials (POSTGRES)
+    await prisma.credentials.create({
+      data: {
+        user_id: user.id,
+        password_hash: hash
+      }
+    });
 
     if (user.role === 'patient') {
       await prisma.patients.create({
@@ -69,7 +72,7 @@ router.post('/register', authLimiter, validateBody(schemas.register), async (req
   }
 });
 
-// LOGIN
+// LOGIN  (🔥 FIXED)
 router.post('/login', authLimiter, validateBody(schemas.login), async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -77,19 +80,15 @@ router.post('/login', authLimiter, validateBody(schemas.login), async (req, res,
     const user = await prisma.users.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // Use Prisma ORM instead of raw SQL
+    // Load credentials correctly (no more raw SQL)
     const cred = await prisma.credentials.findUnique({
       where: { user_id: user.id }
     });
 
-    if (!cred?.password_hash) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!cred) return res.status(401).json({ error: 'Invalid credentials' });
 
     const ok = await bcrypt.compare(password, cred.password_hash);
-    if (!ok) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
     const access = signAccess({ userId: user.id, role: user.role });
     const refresh = signRefresh({ userId: user.id, role: user.role });
@@ -101,7 +100,6 @@ router.post('/login', authLimiter, validateBody(schemas.login), async (req, res,
     next(err);
   }
 });
-
 
 // GOOGLE LOGIN
 router.post('/google', async (req, res, next) => {
