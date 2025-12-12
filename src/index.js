@@ -22,25 +22,34 @@ app.use(helmet());
 // Trust proxy (important for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
-// CORS configuration
-const allowedOrigins = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(',') 
-  : ['http://localhost:5173', 'http://localhost:3000'];
+// CORS configuration (fixed for GitHub Codespaces + Railway)
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowed = [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : []),
+    ];
 
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    // Allow Codespaces dynamic domains
+    const githubDevRegex = /\.github\.dev$/;
+
     if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(new Error('Not allowed by CORS'), false);
+
+    if (allowed.includes(origin) || githubDevRegex.test(origin)) {
+      return callback(null, true);
     }
-    return callback(null, true);
+
+    return callback(new Error(`CORS blocked: ${origin}`), false);
   },
+
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+
 
 // Logging
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
