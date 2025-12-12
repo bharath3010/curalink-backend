@@ -137,11 +137,12 @@ model coupons {
 
 // Credentials table for password storage
 model credentials {
-  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id       String   @unique @db.Uuid
+  user_id       String   @id @db.Uuid        // <-- primary key
   password_hash String
   created_at    DateTime @default(now())
   updated_at    DateTime @default(now())
+
+  @@map("credentials")
 }
 
 // Notifications table
