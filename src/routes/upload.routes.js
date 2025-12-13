@@ -1,5 +1,5 @@
 import express from 'express';
-import requireAuth from '../middlewares/auth.js';
+import requireAuth from '../middleware/auth.js';
 import { uploadProfile, uploadDocument } from '../middlewares/upload.middleware.js';
 import prisma from '../prisma.js';
 
@@ -28,6 +28,7 @@ router.post('/profile', requireAuth, uploadProfile.single('avatar'), async (req,
       }
     });
   } catch (error) {
+    console.error('Upload error:', error);
     next(error);
   }
 });
@@ -40,7 +41,7 @@ router.post('/verification', requireAuth, uploadDocument.single('document'), asy
     }
 
     const userId = req.user.userId;
-    const { fileType } = req.body; // e.g., 'license', 'degree', 'certificate'
+    const { fileType } = req.body;
 
     // Get doctor record
     const doctor = await prisma.doctors.findFirst({
@@ -67,6 +68,7 @@ router.post('/verification', requireAuth, uploadDocument.single('document'), asy
       data: doc
     });
   } catch (error) {
+    console.error('Upload error:', error);
     next(error);
   }
 });
