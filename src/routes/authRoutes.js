@@ -118,6 +118,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // POST /api/auth/login
+// POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -126,32 +127,35 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
-    const user = await prisma.users.findUnique({ where: { email }});
+    const user = await prisma.users.findUnique({
+      where: { email }
+    });
+
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const rows = await prisma.$queryRaw`
-      SELECT password_hash FROM credentials WHERE user_id = ${user.id} LIMIT 1
-    `;
-    const hashed = rows?.[0]?.password_hash;
-    
-    if (!hashed) {
+    // ✅ CORRECT WAY (NO RAW SQL)
+    const credential = await prisma.credentials.findUnique({
+      where: { user_id: user.id }
+    });
+
+    if (!credential) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const ok = await bcrypt.compare(password, hashed);
+    const ok = await bcrypt.compare(password, credential.password_hash);
     if (!ok) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const access = signAccess({ userId: user.id, role: user.role });
     const refresh = signRefresh({ userId: user.id, role: user.role });
-    
+
     res.cookie(COOKIE_NAME, refresh, COOKIE_OPTIONS);
-    res.json({ 
+    res.json({
       success: true,
-      access, 
+      access,
       user: {
         id: user.id,
         name: user.name,
