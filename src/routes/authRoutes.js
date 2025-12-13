@@ -75,27 +75,26 @@ router.post('/register', async (req, res, next) => {
         }
       });
 
-      for (let weekday = 1; weekday <= 5; weekday++) {
-        await prisma.doctor_work_hours.create({
-          data: {
-            doctor_id: doctor.id,
-            weekday,
-            start_time: '09:00',
-            end_time: '17:00'
-          }
+      // Use createMany instead of individual creates (works better with pooler)
+      try {
+        await prisma.doctor_work_hours.createMany({
+          data: [
+            // Monday to Friday
+            { doctor_id: doctor.id, weekday: 1, start_time: '09:00', end_time: '17:00' },
+            { doctor_id: doctor.id, weekday: 2, start_time: '09:00', end_time: '17:00' },
+            { doctor_id: doctor.id, weekday: 3, start_time: '09:00', end_time: '17:00' },
+            { doctor_id: doctor.id, weekday: 4, start_time: '09:00', end_time: '17:00' },
+            { doctor_id: doctor.id, weekday: 5, start_time: '09:00', end_time: '17:00' },
+            // Saturday
+            { doctor_id: doctor.id, weekday: 6, start_time: '09:00', end_time: '13:00' },
+          ]
         });
+        console.log(`✅ Created doctor with work hours: ${user.email}`);
+      } catch (workHoursError) {
+        console.error('❌ Failed to create work hours:', workHoursError.message);
+        // Don't fail the registration, just log it
+        console.log('⚠️ Doctor created but work hours need to be added manually');
       }
-
-      await prisma.doctor_work_hours.create({
-        data: {
-          doctor_id: doctor.id,
-          weekday: 6,
-          start_time: '09:00',
-          end_time: '13:00'
-        }
-      });
-
-      console.log(`✅ Created doctor with work hours: ${user.email}`);
     }
 
     const access = signAccess({ userId: user.id, role: user.role });
