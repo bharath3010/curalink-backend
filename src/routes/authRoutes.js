@@ -2,7 +2,9 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import prisma from '../prisma.js';
 import { signAccess, signRefresh, verifyRefresh } from '../utils/jwt.js';
+import { OAuth2Client } from 'google-auth-library';
 
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const router = express.Router();
 const COOKIE_NAME = process.env.REFRESH_COOKIE_NAME || 'curalink_refresh';
 const COOKIE_OPTIONS = {
@@ -171,40 +173,51 @@ router.post('/login', async (req, res, next) => {
 });
 
 // POST /api/auth/google
-router.post('/google', async (req, res, next) => {
+// POST /api/auth/google
+router.post('/google', async (req, res) => {
   try {
-    const { idToken, role } = req.body;
+    const { idToken } = req.body;
+
     if (!idToken) {
-      return res.status(400).json({ error: 'Missing idToken' });
+      return res.status(400).json({ error: 'Missing Google ID token' });
     }
 
-    const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-    const resp = await fetch(verifyUrl);
-    
-    if (!resp.ok) {
-      return res.status(400).json({ error: 'Invalid Google token' });
-    }
-    
-    const payload = await resp.json();
-    if (!payload.email) {
-      return res.status(400).json({ error: 'Google token missing email' });
-    }
-
-    const user = await findOrCreateUser({
-      name: payload.name,
-      email: payload.email,
-      phone: null,
-      role: role || 'patient',
-      auth_uid: payload.sub
+    // ✅ Verify token securely
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
+
+    const payload = ticket.getPayload();
+    const { email, name, sub, picture } = payload;
+
+    let user = await prisma.users.findUnique({ where: { email } });
+
+    if (!user) {
+      user = await prisma.users.create({
+        data: {
+          name,
+          email,
+          auth_uid: sub,
+          avatar_url: picture,
+          role: 'patient'
+        }
+      });
+
+      await prisma.patients.create({
+        data: { user_id: user.id }
+      });
+    }
 
     const access = signAccess({ userId: user.id, role: user.role });
     const refresh = signRefresh({ userId: user.id, role: user.role });
-    
+
     res.cookie(COOKIE_NAME, refresh, COOKIE_OPTIONS);
     res.json({ success: true, access, user });
+
   } catch (err) {
-    next(err);
+    console.error('Google Auth Error:', err.message);
+    res.status(401).json({ error: 'Google authentication failed' });
   }
 });
 

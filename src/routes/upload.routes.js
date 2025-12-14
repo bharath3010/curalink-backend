@@ -5,24 +5,21 @@ import prisma from '../prisma.js';
 const router = express.Router();
 
 // Middleware to check if user is authenticated
+import jwt from 'jsonwebtoken';
+
 const requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-  
+  if (!authHeader) return res.status(401).json({ error: 'No token' });
+
+  const token = authHeader.split(' ')[1];
   try {
-    const token = authHeader.split(' ')[1];
-    // Basic token validation - you can enhance this
-    if (!token) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-    // In production, verify JWT token here
+    req.user = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
   }
 };
+
 
 // Upload profile picture
 router.post('/profile', requireAuth, uploadProfile.single('avatar'), async (req, res, next) => {

@@ -38,3 +38,4 @@ Content-Type: application/json
   "email": "bharath@test.com",
   "password": "123456"
 }
+POST /api/uploads/profile
