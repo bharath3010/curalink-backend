@@ -39,3 +39,9 @@ Content-Type: application/json
   "password": "123456"
 }
 POST /api/uploads/profile
+
+POST https://curly-trout-4j7r69qx759q3q9pg-8001.app.github.dev/api/auth/google
+Content-Type: application/json
+{
+  "idToken": "<GOOGLE_ID_TOKEN>"
+}

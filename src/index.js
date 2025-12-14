@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+
 import authRoutes from './routes/authRoutes.js';
 import doctorsRoutes from './routes/doctors.js';
 import apptRoutes from './routes/appointments.js';
@@ -16,31 +17,68 @@ import apiLimiter from './middlewares/rateLimit.middleware.js';
 dotenv.config();
 const app = express();
 
+/* =======================
+   SECURITY & BASIC SETUP
+======================= */
 app.use(helmet());
 app.set('trust proxy', 1);
 
-const allowedOrigins = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(',') 
+/* =======================
+   CORS (IMPORTANT)
+======================= */
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',')
   : ['http://localhost:5173'];
 
 app.use(cors({
-  origin: function(origin, callback) {
+  origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1 && !allowedOrigins.includes('*')) {
-      return callback(new Error('Not allowed by CORS'), false);
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('CORS not allowed'), false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+/* =======================
+   LOGGING
+======================= */
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+/* =======================
+   PAYPAL WEBHOOK (RAW BODY)
+   ⚠ MUST BE BEFORE express.json()
+======================= */
+app.use('/api/payments', paymentsRoutes);
+
+/* =======================
+   BODY PARSERS
+======================= */
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
+/* =======================
+   RATE LIMITER
+======================= */
+app.use('/api/', apiLimiter);
+
+/* =======================
+   ROUTES
+======================= */
+app.use('/api/auth', authRoutes);
+app.use('/api/doctors', doctorsRoutes);
+app.use('/api/appointments', apptRoutes);
+app.use('/api/reviews', reviewsRoutes);
+app.use('/api/uploads', uploadRoutes);
+app.use('/api/admin', adminRoutes);
+
+/* =======================
+   ROOT & HEALTH
+======================= */
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -51,38 +89,37 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/_health', (req, res) => res.json({ 
-  ok: true, 
-  timestamp: new Date().toISOString(),
-  uptime: process.uptime(),
-}));
+app.get('/_health', (req, res) => {
+  res.json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
 
-app.use('/api/', apiLimiter);
-
-app.use('/api/auth', authRoutes);
-app.use('/api/doctors', doctorsRoutes);
-app.use('/api/appointments', apptRoutes);
-app.use('/api/payments', paymentsRoutes);
-app.use('/api/reviews', reviewsRoutes);
-app.use('/api/uploads', uploadRoutes);
-app.use('/api/admin', adminRoutes);
-
+/* =======================
+   404 HANDLER
+======================= */
 app.use((req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     error: 'Route not found',
-    path: req.originalUrl 
+    path: req.originalUrl,
   });
 });
 
+/* =======================
+   ERROR HANDLER
+======================= */
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  const isDev = process.env.NODE_ENV === 'development';
-  res.status(err.status || 500).json({ 
+  console.error('🔥 Error:', err.message);
+  res.status(err.status || 500).json({
     error: err.message || 'Internal server error',
-    ...(isDev && { stack: err.stack })
   });
 });
 
+/* =======================
+   SERVER START
+======================= */
 const PORT = process.env.PORT || 8001;
 const server = app.listen(PORT, () => {
   console.log('🏥 CuraLink API Server');
@@ -90,6 +127,7 @@ const server = app.listen(PORT, () => {
 });
 
 process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down...');
   server.close(() => process.exit(0));
 });
 

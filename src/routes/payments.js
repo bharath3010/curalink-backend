@@ -5,11 +5,11 @@ import prisma from '../prisma.js';
 
 const router = express.Router();
 
-// POST /api/payments/create-order
+// ================== CREATE PAYPAL ORDER ==================
 router.post('/create-order', requireAuth, async (req, res, next) => {
   try {
     const { appointmentId } = req.body;
-    
+
     if (!appointmentId) {
       return res.status(400).json({ error: 'appointmentId required' });
     }
@@ -27,9 +27,12 @@ router.post('/create-order', requireAuth, async (req, res, next) => {
     });
 
     const amount = doctor.fee;
-    const paypalOrder = await paymentService.createOrder(appointmentId, amount);
 
-    // Create payment record
+    const paypalOrder = await paymentService.createOrder(
+      appointmentId,
+      amount
+    );
+
     const payment = await prisma.payments.create({
       data: {
         appointment_id: appointmentId,
@@ -53,7 +56,7 @@ router.post('/create-order', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/payments/capture-order
+// ================== CAPTURE PAYPAL ORDER ==================
 router.post('/capture-order', requireAuth, async (req, res, next) => {
   try {
     const { orderId } = req.body;
@@ -76,7 +79,10 @@ router.post('/capture-order', requireAuth, async (req, res, next) => {
 
       await prisma.appointments.update({
         where: { id: payment.appointment_id },
-        data: { status: 'confirmed', payment_id: payment.id }
+        data: {
+          status: 'confirmed',
+          payment_id: payment.id
+        }
       });
     }
 
@@ -90,20 +96,55 @@ router.post('/capture-order', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/payments/webhook
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  try {
-    const event = req.body;
-    console.log('PayPal webhook:', event.event_type);
-    
-    // TODO: Verify webhook signature
-    // TODO: Handle different event types
-    
-    res.status(200).json({ received: true });
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).json({ error: 'Webhook failed' });
+// ================== PAYPAL WEBHOOK ==================
+router.post(
+  '/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    try {
+      const event = JSON.parse(req.body.toString());
+
+      console.log('📩 PayPal Webhook:', event.event_type);
+
+      // ✅ Payment successful
+      if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
+        const capture = event.resource;
+
+        await prisma.payments.updateMany({
+          where: {
+            provider_payment_id: capture.id
+          },
+          data: {
+            status: 'completed'
+          }
+        });
+
+        console.log('✅ Payment completed:', capture.id);
+      }
+
+      // ❌ Payment failed
+      if (
+        event.event_type === 'PAYMENT.CAPTURE.DENIED' ||
+        event.event_type === 'PAYMENT.CAPTURE.DECLINED'
+      ) {
+        await prisma.payments.updateMany({
+          where: {
+            provider_payment_id: event.resource.id
+          },
+          data: {
+            status: 'failed'
+          }
+        });
+
+        console.log('❌ Payment failed:', event.resource.id);
+      }
+
+      res.status(200).send('OK');
+    } catch (err) {
+      console.error('❌ Webhook error:', err);
+      res.status(400).send('Webhook error');
+    }
   }
-});
+);
 
 export default router;
