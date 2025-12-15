@@ -97,54 +97,130 @@ router.post('/capture-order', requireAuth, async (req, res, next) => {
 });
 
 // ================== PAYPAL WEBHOOK ==================
-router.post(
-  '/webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    try {
-      const event = JSON.parse(req.body.toString());
+router.post('/webhook', express.json(), async (req, res) => {
+  try {
+    const event = req.body;
 
-      console.log('📩 PayPal Webhook:', event.event_type);
+    console.log('📩 PayPal Webhook Received');
+    console.log('Event Type:', event.event_type);
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
 
-      // ✅ Payment successful
-      if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
-        const capture = event.resource;
+    // Verify webhook signature (basic validation for sandbox)
+    const transmissionId = req.headers['paypal-transmission-id'];
+    const transmissionTime = req.headers['paypal-transmission-time'];
+    const transmissionSig = req.headers['paypal-transmission-sig'];
 
-        await prisma.payments.updateMany({
-          where: {
-            provider_payment_id: capture.id
-          },
-          data: {
-            status: 'completed'
-          }
-        });
-
-        console.log('✅ Payment completed:', capture.id);
-      }
-
-      // ❌ Payment failed
-      if (
-        event.event_type === 'PAYMENT.CAPTURE.DENIED' ||
-        event.event_type === 'PAYMENT.CAPTURE.DECLINED'
-      ) {
-        await prisma.payments.updateMany({
-          where: {
-            provider_payment_id: event.resource.id
-          },
-          data: {
-            status: 'failed'
-          }
-        });
-
-        console.log('❌ Payment failed:', event.resource.id);
-      }
-
-      res.status(200).send('OK');
-    } catch (err) {
-      console.error('❌ Webhook error:', err);
-      res.status(400).send('Webhook error');
+    if (!transmissionId || !transmissionTime || !transmissionSig) {
+      console.error('❌ Missing webhook signature headers');
+      return res.status(401).json({ error: 'Invalid signature' });
     }
+
+    // Handle different event types
+    switch (event.event_type) {
+      case 'PAYMENT.CAPTURE.COMPLETED': {
+        const resource = event.resource;
+        const captureId = resource.id;
+        const orderId = resource.supplementary_data?.related_ids?.order_id;
+        const amount = resource.amount.value;
+
+        console.log(`💰 Payment Captured:`);
+        console.log(`   Capture ID: ${captureId}`);
+        console.log(`   Order ID: ${orderId}`);
+        console.log(`   Amount: ${amount}`);
+
+        // Update payment by order ID (not capture ID)
+        const payment = await prisma.payments.findFirst({
+          where: { provider_payment_id: orderId }
+        });
+
+        if (payment) {
+          await prisma.payments.update({
+            where: { id: payment.id },
+            data: {
+              status: 'completed',
+              updated_at: new Date()
+            }
+          });
+
+          await prisma.appointments.update({
+            where: { id: payment.appointment_id },
+            data: {
+              status: 'confirmed',
+              payment_id: payment.id
+            }
+          });
+
+          console.log(`✅ Payment ${payment.id} marked as COMPLETED`);
+        } else {
+          console.warn(`⚠️ No payment found for order ID: ${orderId}`);
+        }
+        break;
+      }
+
+      case 'PAYMENT.CAPTURE.DENIED':
+      case 'PAYMENT.CAPTURE.DECLINED': {
+        const resource = event.resource;
+        const orderId = resource.supplementary_data?.related_ids?.order_id;
+
+        console.log(`❌ Payment Failed for Order: ${orderId}`);
+
+        const payment = await prisma.payments.findFirst({
+          where: { provider_payment_id: orderId }
+        });
+
+        if (payment) {
+          await prisma.payments.update({
+            where: { id: payment.id },
+            data: { status: 'failed' }
+          });
+
+          await prisma.appointments.update({
+            where: { id: payment.appointment_id },
+            data: { status: 'cancelled' }
+          });
+
+          console.log(`✅ Payment ${payment.id} marked as FAILED`);
+        }
+        break;
+      }
+
+      case 'PAYMENT.CAPTURE.REFUNDED': {
+        const resource = event.resource;
+        const captureId = resource.supplementary_data?.related_ids?.capture_id;
+
+        console.log(`💸 Payment Refunded: ${captureId}`);
+
+        // Find by capture ID for refunds
+        const payment = await prisma.payments.findFirst({
+          where: { provider_payment_id: captureId }
+        });
+
+        if (payment) {
+          await prisma.payments.update({
+            where: { id: payment.id },
+            data: { status: 'refunded' }
+          });
+
+          await prisma.appointments.update({
+            where: { id: payment.appointment_id },
+            data: { status: 'cancelled' }
+          });
+
+          console.log(`✅ Payment ${payment.id} marked as REFUNDED`);
+        }
+        break;
+      }
+
+      default:
+        console.log(`ℹ️ Unhandled event type: ${event.event_type}`);
+    }
+
+    // Always return 200 to acknowledge receipt
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('❌ Webhook Error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
   }
-);
+});
 
 export default router;
