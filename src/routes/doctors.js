@@ -181,6 +181,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // GET /api/doctors/:id/availability
+// GET /api/doctors/:id/availability
 router.get('/:id/availability', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -190,8 +191,9 @@ router.get('/:id/availability', async (req, res, next) => {
       return res.status(400).json({ error: 'Date parameter required' });
     }
 
-    const targetDate = new Date(date);
-    const weekday = targetDate.getDay();
+    // Force midnight to avoid timezone shift
+    const targetDate = new Date(`${date}T00:00:00`);
+    const weekday = targetDate.getDay(); // 0–6
 
     const workHours = await prisma.doctor_work_hours.findMany({
       where: {
@@ -204,14 +206,12 @@ router.get('/:id/availability', async (req, res, next) => {
       return res.json({
         success: true,
         available: false,
-        message: 'Doctor not available on this day'
+        slots: []
       });
     }
 
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const startOfDay = new Date(`${date}T00:00:00`);
+    const endOfDay = new Date(`${date}T23:59:59`);
 
     const bookedSlots = await prisma.appointments.findMany({
       where: {
@@ -220,9 +220,7 @@ router.get('/:id/availability', async (req, res, next) => {
           gte: startOfDay,
           lte: endOfDay
         },
-        status: {
-          not: 'cancelled'
-        }
+        status: { not: 'cancelled' }
       },
       select: {
         appointment_start: true,
@@ -231,46 +229,51 @@ router.get('/:id/availability', async (req, res, next) => {
     });
 
     const availableSlots = [];
-    workHours.forEach(wh => {
-      const [startHour, startMin] = wh.start_time.split(':').map(Number);
-      const [endHour, endMin] = wh.end_time.split(':').map(Number);
 
-      let currentTime = new Date(date);
-      currentTime.setHours(startHour, startMin, 0, 0);
+    for (const wh of workHours) {
+      const startTime = new Date(wh.start_time);
+      const endTime = new Date(wh.end_time);
 
-      const endTime = new Date(date);
-      endTime.setHours(endHour, endMin, 0, 0);
+      let current = new Date(startOfDay);
+      current.setHours(
+        startTime.getUTCHours(),
+        startTime.getUTCMinutes(),
+        0,
+        0
+      );
 
-      while (currentTime < endTime) {
-        const slotTime = new Date(currentTime);
-        
-        const isBooked = bookedSlots.some(slot => {
-          const slotStart = new Date(slot.appointment_start);
-          const slotEnd = new Date(slotStart.getTime() + slot.duration_minutes * 60000);
-          return slotTime >= slotStart && slotTime < slotEnd;
+      const end = new Date(startOfDay);
+      end.setHours(
+        endTime.getUTCHours(),
+        endTime.getUTCMinutes(),
+        0,
+        0
+      );
+
+      while (current < end) {
+        const slotStart = new Date(current);
+        const slotEnd = new Date(current);
+        slotEnd.setMinutes(slotEnd.getMinutes() + 30); // 30-min slots
+
+        const isBooked = bookedSlots.some(b => {
+          const bookedStart = new Date(b.appointment_start);
+          const bookedEnd = new Date(bookedStart);
+          bookedEnd.setMinutes(bookedEnd.getMinutes() + b.duration_minutes);
+          return slotStart < bookedEnd && slotEnd > bookedStart;
         });
 
         if (!isBooked) {
-          availableSlots.push({
-            time: slotTime.toISOString(),
-            displayTime: slotTime.toLocaleTimeString('en-US', { 
-              hour: '2-digit', 
-              minute: '2-digit',
-              hour12: true 
-            })
-          });
+          availableSlots.push(slotStart.toISOString());
         }
 
-        currentTime.setMinutes(currentTime.getMinutes() + 30);
+        current.setMinutes(current.getMinutes() + 30);
       }
-    });
+    }
 
     res.json({
       success: true,
       available: availableSlots.length > 0,
-      date,
-      workHours,
-      availableSlots
+      slots: availableSlots
     });
   } catch (err) {
     next(err);
