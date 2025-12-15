@@ -103,16 +103,30 @@ router.post('/webhook', express.json(), async (req, res) => {
 
     console.log('📩 PayPal Webhook Received');
     console.log('Event Type:', event.event_type);
+    console.log('Full Body:', JSON.stringify(event, null, 2));
     console.log('Headers:', JSON.stringify(req.headers, null, 2));
 
     // Verify webhook signature (basic validation for sandbox)
     const transmissionId = req.headers['paypal-transmission-id'];
     const transmissionTime = req.headers['paypal-transmission-time'];
     const transmissionSig = req.headers['paypal-transmission-sig'];
+    const webhookId = process.env.PAYPAL_WEBHOOK_ID;
 
+    console.log('🔐 Signature Check:');
+    console.log('   Transmission ID:', transmissionId);
+    console.log('   Transmission Time:', transmissionTime);
+    console.log('   Transmission Sig:', transmissionSig);
+    console.log('   Webhook ID:', webhookId);
+
+    // Strict validation - require all PayPal headers
     if (!transmissionId || !transmissionTime || !transmissionSig) {
       console.error('❌ Missing webhook signature headers');
-      return res.status(401).json({ error: 'Invalid signature' });
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+
+    if (!webhookId || webhookId === 'TEMP_VALUE') {
+      console.error('❌ PAYPAL_WEBHOOK_ID not configured');
+      return res.status(500).json({ error: 'Webhook not configured' });
     }
 
     // Handle different event types
@@ -121,14 +135,19 @@ router.post('/webhook', express.json(), async (req, res) => {
         const resource = event.resource;
         const captureId = resource.id;
         const orderId = resource.supplementary_data?.related_ids?.order_id;
-        const amount = resource.amount.value;
+        const amount = resource.amount?.value;
 
         console.log(`💰 Payment Captured:`);
         console.log(`   Capture ID: ${captureId}`);
         console.log(`   Order ID: ${orderId}`);
         console.log(`   Amount: ${amount}`);
 
-        // Update payment by order ID (not capture ID)
+        if (!orderId) {
+          console.warn('⚠️ No order ID in webhook event');
+          return res.status(200).json({ received: true, warning: 'No order ID' });
+        }
+
+        // Update payment by order ID
         const payment = await prisma.payments.findFirst({
           where: { provider_payment_id: orderId }
         });
@@ -164,6 +183,10 @@ router.post('/webhook', express.json(), async (req, res) => {
 
         console.log(`❌ Payment Failed for Order: ${orderId}`);
 
+        if (!orderId) {
+          return res.status(200).json({ received: true });
+        }
+
         const payment = await prisma.payments.findFirst({
           where: { provider_payment_id: orderId }
         });
@@ -190,7 +213,10 @@ router.post('/webhook', express.json(), async (req, res) => {
 
         console.log(`💸 Payment Refunded: ${captureId}`);
 
-        // Find by capture ID for refunds
+        if (!captureId) {
+          return res.status(200).json({ received: true });
+        }
+
         const payment = await prisma.payments.findFirst({
           where: { provider_payment_id: captureId }
         });
@@ -216,11 +242,11 @@ router.post('/webhook', express.json(), async (req, res) => {
     }
 
     // Always return 200 to acknowledge receipt
-    res.status(200).json({ received: true });
+    res.status(200).json({ received: true, event_type: event.event_type });
   } catch (error) {
     console.error('❌ Webhook Error:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
-
 export default router;
