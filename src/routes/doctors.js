@@ -180,7 +180,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// GET /api/doctors/:id/availability
+
 // GET /api/doctors/:id/availability
 router.get('/:id/availability', async (req, res, next) => {
   try {
@@ -191,15 +191,12 @@ router.get('/:id/availability', async (req, res, next) => {
       return res.status(400).json({ error: 'Date parameter required' });
     }
 
-    // Force midnight to avoid timezone shift
+    // Normalize date (avoid TZ shift)
     const targetDate = new Date(`${date}T00:00:00`);
-    const weekday = targetDate.getDay(); // 0–6
+    const weekday = targetDate.getDay(); // 0 = Sunday
 
     const workHours = await prisma.doctor_work_hours.findMany({
-      where: {
-        doctor_id: id,
-        weekday
-      }
+      where: { doctor_id: id, weekday }
     });
 
     if (workHours.length === 0) {
@@ -228,56 +225,42 @@ router.get('/:id/availability', async (req, res, next) => {
       }
     });
 
+    const bookedTimes = bookedSlots.map(b =>
+      b.appointment_start.getTime()
+    );
+
     const availableSlots = [];
 
     for (const wh of workHours) {
-      const startTime = new Date(wh.start_time);
-      const endTime = new Date(wh.end_time);
+      // ✅ Extract hours/minutes from DateTime (@db.Time)
+      const startH = wh.start_time.getUTCHours();
+      const startM = wh.start_time.getUTCMinutes();
+      const endH = wh.end_time.getUTCHours();
+      const endM = wh.end_time.getUTCMinutes();
 
-      let current = new Date(startOfDay);
-      current.setHours(
-        startTime.getUTCHours(),
-        startTime.getUTCMinutes(),
-        0,
-        0
-      );
-
-      const end = new Date(startOfDay);
-      end.setHours(
-        endTime.getUTCHours(),
-        endTime.getUTCMinutes(),
-        0,
-        0
-      );
+      let current = new Date(`${date}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
+      const end = new Date(`${date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
 
       while (current < end) {
-        const slotStart = new Date(current);
-        const slotEnd = new Date(current);
-        slotEnd.setMinutes(slotEnd.getMinutes() + 30); // 30-min slots
+        const time = current.getTime();
 
-        const isBooked = bookedSlots.some(b => {
-          const bookedStart = new Date(b.appointment_start);
-          const bookedEnd = new Date(bookedStart);
-          bookedEnd.setMinutes(bookedEnd.getMinutes() + b.duration_minutes);
-          return slotStart < bookedEnd && slotEnd > bookedStart;
-        });
-
-        if (!isBooked) {
-          availableSlots.push(slotStart.toISOString());
+        if (!bookedTimes.includes(time)) {
+          availableSlots.push(new Date(time).toISOString());
         }
 
-        current.setMinutes(current.getMinutes() + 30);
+        current = new Date(time + 30 * 60 * 1000); // 30 mins
       }
     }
 
     res.json({
       success: true,
-      available: availableSlots.length > 0,
+      available: true,
       slots: availableSlots
     });
   } catch (err) {
     next(err);
   }
 });
+
 
 export default router;
