@@ -51,8 +51,8 @@ model doctor_work_hours {
   id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   doctor_id  String?  @db.Uuid
   weekday    Int
-  start_time String
-  end_time   String
+  start_time DateTime @db.Time  // ✅ Correct
+  end_time   DateTime @db.Time  // ✅ Correct
 }
 
 model verification_docs {
