@@ -40,18 +40,16 @@ router.post('/', requireAuth, async (req, res, next) => {
   }
 });
 
-// GET /api/appointments - Get all appointments for logged-in user
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    let appointments;
+    let appointments = [];
 
     if (userRole === 'patient') {
-      // Get patient's appointments
       const patient = await prisma.patients.findFirst({
-        where: { user_id: userId }
+        where: { user_id: userId },
       });
 
       if (!patient) {
@@ -62,19 +60,25 @@ router.get('/', requireAuth, async (req, res, next) => {
         where: { patient_id: patient.id },
         orderBy: { appointment_start: 'desc' },
         include: {
-          doctors: {
+          doctor: {
             include: {
-              users: {
-                select: { name: true, email: true }
-              }
-            }
-          }
-        }
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                  avatar_url: true,
+                },
+              },
+            },
+          },
+          payment: true,
+        },
       });
-    } else if (userRole === 'doctor') {
-      // Get doctor's appointments
+    }
+
+    else if (userRole === 'doctor') {
       const doctor = await prisma.doctors.findFirst({
-        where: { user_id: userId }
+        where: { user_id: userId },
       });
 
       if (!doctor) {
@@ -85,33 +89,32 @@ router.get('/', requireAuth, async (req, res, next) => {
         where: { doctor_id: doctor.id },
         orderBy: { appointment_start: 'desc' },
         include: {
-          patients: {
+          patient: {
             include: {
-              users: {
-                select: { name: true, email: true }
-              }
-            }
-          }
-        }
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                  avatar_url: true,
+                },
+              },
+            },
+          },
+          payment: true,
+        },
       });
-    } else {
+    }
+
+    else {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
     res.json({ success: true, data: appointments });
   } catch (error) {
+    console.error('❌ Appointments fetch error:', error);
     next(error);
   }
 });
 
-// GET /api/appointments/:id
-router.get('/:id', requireAuth, async (req, res, next) => {
-  try {
-    const id = req.params.id;
-    const appt = await prisma.appointments.findUnique({ where: { id }});
-    if (!appt) return res.status(404).json({ error: 'Not found' });
-    res.json({ appt });
-  } catch (err) { next(err); }
-});
 
 export default router;
