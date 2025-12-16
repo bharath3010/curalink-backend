@@ -40,6 +40,70 @@ router.post('/', requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/appointments - Get all appointments for logged-in user
+router.get('/', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    let appointments;
+
+    if (userRole === 'patient') {
+      // Get patient's appointments
+      const patient = await prisma.patients.findFirst({
+        where: { user_id: userId }
+      });
+
+      if (!patient) {
+        return res.json({ success: true, data: [] });
+      }
+
+      appointments = await prisma.appointments.findMany({
+        where: { patient_id: patient.id },
+        orderBy: { appointment_start: 'desc' },
+        include: {
+          doctors: {
+            include: {
+              users: {
+                select: { name: true, email: true }
+              }
+            }
+          }
+        }
+      });
+    } else if (userRole === 'doctor') {
+      // Get doctor's appointments
+      const doctor = await prisma.doctors.findFirst({
+        where: { user_id: userId }
+      });
+
+      if (!doctor) {
+        return res.json({ success: true, data: [] });
+      }
+
+      appointments = await prisma.appointments.findMany({
+        where: { doctor_id: doctor.id },
+        orderBy: { appointment_start: 'desc' },
+        include: {
+          patients: {
+            include: {
+              users: {
+                select: { name: true, email: true }
+              }
+            }
+          }
+        }
+      });
+    } else {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    res.json({ success: true, data: appointments });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/appointments/:id
 router.get('/:id', requireAuth, async (req, res, next) => {
   try {
