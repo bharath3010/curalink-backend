@@ -60,9 +60,9 @@ router.get('/', requireAuth, async (req, res, next) => {
         where: { patient_id: patient.id },
         orderBy: { appointment_start: 'desc' },
         include: {
-          doctors: {
+          doctor: {
             include: {
-              users: {
+              user: {
                 select: {
                   name: true,
                   email: true,
@@ -71,7 +71,7 @@ router.get('/', requireAuth, async (req, res, next) => {
               },
             },
           },
-          payments: true,
+          payment: true,
         },
       });
     }
@@ -89,9 +89,9 @@ router.get('/', requireAuth, async (req, res, next) => {
         where: { doctor_id: doctor.id },
         orderBy: { appointment_start: 'desc' },
         include: {
-          patients: {
+          patient: {
             include: {
-              users: {
+              user: {
                 select: {
                   name: true,
                   email: true,
@@ -100,7 +100,7 @@ router.get('/', requireAuth, async (req, res, next) => {
               },
             },
           },
-          payments: true,
+          payment: true,
         },
       });
     }
