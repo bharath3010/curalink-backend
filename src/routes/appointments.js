@@ -56,24 +56,29 @@ router.get('/', requireAuth, async (req, res, next) => {
         return res.json({ success: true, data: [] });
       }
 
-      appointments = await prisma.appointments.findMany({
-        where: { patient_id: patient.id },
-        orderBy: { appointment_start: 'desc' },
-        include: {
-          doctor: {
-            include: {
-              user: {
-                select: {
-                  name: true,
-                  email: true,
-                  avatar_url: true,
-                },
-              },
-            },
+    appointments = await prisma.appointments.findMany({
+  where: { patient_id: patient.id },
+  orderBy: { appointment_start: 'desc' },
+
+  // 🔒 Relations disabled because appointments model has no Prisma relations yet
+  /*
+  include: {
+    doctor: {
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+            avatar_url: true,
           },
-          payment: true,
         },
-      });
+      },
+    },
+    payment: true,
+  },
+  */
+});
+
     }
 
     else if (userRole === 'doctor') {
@@ -86,23 +91,27 @@ router.get('/', requireAuth, async (req, res, next) => {
       }
 
       appointments = await prisma.appointments.findMany({
-        where: { doctor_id: doctor.id },
-        orderBy: { appointment_start: 'desc' },
-        include: {
-          patient: {
-            include: {
-              user: {
-                select: {
-                  name: true,
-                  email: true,
-                  avatar_url: true,
-                },
-              },
-            },
+  where: { doctor_id: doctor.id },
+  orderBy: { appointment_start: 'desc' },
+
+  // 🔒 Relations disabled temporarily
+  /*
+  include: {
+    patient: {
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+            avatar_url: true,
           },
-          payment: true,
         },
-      });
+      },
+    },
+    payment: true,
+  },
+  */
+});
     }
 
     else {

@@ -45,3 +45,11 @@ Content-Type: application/json
 {
   "idToken": "<GOOGLE_ID_TOKEN>"
 }
+
+
+POST https://curalink-backend-production-0591.up.railway.app/api/auth/login
+Content-Type: application/json
+{
+  "email": "<test1234gym@gmail.com>",
+  "password": "<password123>"
+}
